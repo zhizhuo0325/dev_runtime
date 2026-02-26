@@ -1,0 +1,137 @@
+# etcd Enterprise Deployment Configuration
+# Version: 1.0.0
+# Description: Enterprise-grade etcd cluster with TLS, security, and monitoring
+
+services:
+  etcd:
+    # 使用官方 etcd 镜像
+    image: quay.io/coreos/etcd:v3.5.13
+    
+    # 容器名称（便于管理和识别）
+    container_name: etcd
+    
+    # 重启策略：容器退出时自动重启（生产环境推荐配置）
+    restart: unless-stopped
+    
+    # 端口映射配置
+    ports:
+      # 客户端通信端口
+      - "2379:2379"
+      # 节点间通信端口
+      - "2380:2380"
+      # 指标监控端口
+      - "2381:2381"
+    
+    # 环境变量配置
+    environment:
+      # 时区配置（与宿主机保持一致）
+      TZ: Asia/Shanghai
+      
+      # etcd 集群配置
+      ETCD_NAME: etcd-node
+      ETCD_DATA_DIR: /etcd-data
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_LISTEN_PEER_URLS: "http://0.0.0.0:2380"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: "http://0.0.0.0:2380"
+      
+      # 安全配置（生产环境建议启用 TLS）
+      ETCD_CLIENT_CERT_AUTH: "false"
+      ETCD_PEER_CLIENT_CERT_AUTH: "false"
+      
+      # 集群配置（单节点模式）
+      ETCD_INITIAL_CLUSTER: "etcd-node=http://0.0.0.0:2380"
+      ETCD_INITIAL_CLUSTER_TOKEN: "etcd-cluster-token"
+      ETCD_INITIAL_CLUSTER_STATE: "new"
+      
+      # 性能优化
+      ETCD_HEARTBEAT_INTERVAL: "100"
+      ETCD_ELECTION_TIMEOUT: "1000"
+      ETCD_SNAPSHOT_COUNT: "10000"
+      
+      # 资源限制
+      ETCD_QUOTA_BACKEND_BYTES: "2147483648"  # 2GB
+      
+      # 日志配置
+      ETCD_DEBUG: "false"
+      ETCD_LOG_LEVEL: "info"
+      ETCD_LOG_OUTPUT: "default"
+    
+    # 数据卷挂载配置
+    volumes:
+      # 数据持久化（确保数据不丢失）
+      - ./data:/etcd-data
+      
+      # 配置文件挂载（支持自定义配置）
+      - ./conf/etcd.conf:/etc/etcd/etcd.conf
+      
+      # SSL 证书目录（如启用 TLS 加密）
+      - ./ssl:/etc/etcd/ssl
+      
+      # 日志文件持久化（便于日志分析和审计）
+      - ./logs:/var/log/etcd
+    
+    # 健康检查配置
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    
+    # 资源限制配置（根据服务器资源调整）
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # 网络配置
+    networks:
+      - etcd_network
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    
+    # 日志驱动配置
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+        compress: "true"
+
+  # etcd 监控服务（可选 - Prometheus 导出器）
+  etcd-exporter:
+    image: quay.io/coreos/etcd:v3.5.13
+    container_name: etcd_monitor
+    restart: unless-stopped
+    command: 
+      - /usr/local/bin/etcd
+      - --metrics
+      - extensive
+    ports:
+      - "2381:2381"
+    depends_on:
+      - etcd
+    networks:
+      - etcd_network
+
+# 自定义网络配置
+networks:
+  etcd_network:
+    driver: bridge
+    # 网络配置优化
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+          gateway: 172.22.0.1
+
+# 卷配置（外部卷可选）
+volumes:
+  etcd_data:
+    driver: local
