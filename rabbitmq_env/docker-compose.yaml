@@ -1,0 +1,83 @@
+# RabbitMQ Enterprise Deployment Configuration
+# Version: 1.0.0
+# Description: Enterprise-grade RabbitMQ cluster with persistent storage, monitoring, and security
+
+services:
+  rabbitmq:
+    # 使用官方 RabbitMQ 镜像（带管理插件版本）
+    image: rabbitmq:3.13-management-alpine
+    
+    # 容器名称（便于管理和识别）
+    container_name: rabbitmq_enterprise
+    
+    # 主机名设置（用于集群识别）
+    hostname: rabbitmq-node
+    
+    # 重启策略：容器退出时自动重启（生产环境推荐配置）
+    restart: unless-stopped
+    
+    # 端口映射配置
+    ports:
+      # AMQP 协议端口（应用程序连接端口）
+      - "5672:5672"
+      # 管理界面端口（Web UI 访问）
+      - "15672:15672"
+      # Prometheus 监控指标端口
+      - "15692:15692"
+      # Erlang 分布式节点通信端口（集群使用）
+      - "25672:25672"
+    
+    # 环境变量配置
+    environment:
+      # 时区配置（与宿主机保持一致）
+      TZ: Asia/Shanghai
+      
+      # RabbitMQ 默认虚拟主机
+      RABBITMQ_DEFAULT_VHOST: /dev
+      
+      # 管理员账户配置（生产环境必须修改！）
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: ldsw@123.
+      
+      # 管理镜像已默认包含所需插件，无需额外配置
+      
+      # 日志级别配置
+      RABBITMQ_LOGS: "-"
+      RABBITMQ_SASL_LOGS: "-"
+    
+    # 数据卷挂载配置
+    volumes:
+      # 消息数据持久化（确保消息不丢失）
+      - ./data:/var/lib/rabbitmq
+      # 配置文件挂载（支持自定义配置）
+      - ./conf/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      # 日志文件持久化（便于日志分析和审计）
+      - ./logs:/var/log/rabbitmq
+    # 健康检查配置
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    
+    # 资源限制配置（根据服务器资源调整）
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # 安全配置
+    security_opt:
+      - no-new-privileges:true
+    # 日志驱动配置
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+        compress: "true"
